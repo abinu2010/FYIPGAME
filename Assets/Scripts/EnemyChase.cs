@@ -79,28 +79,23 @@ public class EnemyChase : MonoBehaviour
             return;
         }
 
-        // Make sure we always have a target
         if (target == null)
         {
             if (shooter != null && shooter.TargetPlayer != null)
                 target = shooter.TargetPlayer.transform;
 
             if (target == null)
-            {
-                if (!warnedNoTarget)
-                {
-                    Debug.LogWarning("EnemyChase: No target to chase on " + gameObject.name);
-                    warnedNoTarget = true;
-                }
                 return;
-            }
         }
-
-        // Vision can also wake them up
-        if (!aggro && shooter != null && shooter.IsSeeingPlayer)
+        if (aggro || (shooter != null && shooter.IsSeeingPlayer))
         {
-            aggro = true;
-            Debug.Log("EnemyChase: Aggro from vision on " + gameObject.name);
+            Vector3 rotTarget = target.position - transform.position;
+            Vector3 rotFlat = new Vector3(rotTarget.x, 0f, rotTarget.z);
+            if (rotFlat.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRotation = Quaternion.LookRotation(rotFlat);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
+            }
         }
 
         if (!aggro)
@@ -113,56 +108,27 @@ public class EnemyChase : MonoBehaviour
             return;
         }
 
-        if (!agent.isOnNavMesh)
-        {
-            Debug.LogWarning("EnemyChase: Agent not on navmesh " + gameObject.name);
-            return;
-        }
+        if (!agent.isOnNavMesh) return;
 
         agent.speed = moveSpeed;
 
-        // Re-set destination every small interval
         repathTimer -= Time.deltaTime;
         if (repathTimer <= 0f)
         {
-            Vector3 dest = target.position;
-            bool ok = agent.SetDestination(dest);
-            if (!ok)
-            {
-                Debug.LogWarning("EnemyChase: SetDestination failed on " + gameObject.name);
-            }
-            else
-            {
-                Debug.Log("EnemyChase: Chasing, dest " + dest);
-            }
-
+            agent.SetDestination(target.position);
             agent.isStopped = false;
             repathTimer = repathInterval;
         }
 
-        // Stop when close enough on the navmesh path
         if (!agent.pathPending && agent.hasPath)
         {
             if (agent.remainingDistance <= stopDistance)
             {
-                if (!agent.isStopped)
-                {
-                    agent.isStopped = true;
-                    Debug.Log("EnemyChase: Reached stop distance on " + gameObject.name);
-                }
+                if (!agent.isStopped) agent.isStopped = true;
             }
         }
 
-        // Face the player
-        Vector3 toTarget = target.position - transform.position;
-        Vector3 flat = new Vector3(toTarget.x, 0f, toTarget.z);
-        if (flat.sqrMagnitude > 0.001f)
-        {
-            Quaternion targetRot = Quaternion.LookRotation(flat);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, turnSpeed * Time.deltaTime);
-        }
     }
-
     public void ResetAggro()
     {
         aggro = false;

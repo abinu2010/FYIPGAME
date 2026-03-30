@@ -17,6 +17,10 @@ public class EnemyShooter : MonoBehaviour
     [SerializeField] private float fireRate = 3f;
     [SerializeField] private int damagePerShot = 5;
 
+    [Header("Shooting State")]
+    [SerializeField] private float shootingStateHoldSeconds = 0.2f;
+    [SerializeField] private float shootTurnSpeed = 12f;
+
     [Header("Tracer")]
     [SerializeField] private float tracerDuration = 0.04f;
 
@@ -24,6 +28,7 @@ public class EnemyShooter : MonoBehaviour
     [SerializeField] private bool drawDebugRays = true;
 
     float nextFireTime;
+    float lastSeenTime = -999f;
     bool seeingPlayer;
     Collider targetCollider;
     Coroutine tracerRoutine;
@@ -59,25 +64,59 @@ public class EnemyShooter : MonoBehaviour
         if (sm != null && !sm.IsRoundActive)
         {
             seeingPlayer = false;
+            if (enemyAnimator != null)
+                enemyAnimator.SetShooting(false);
             return;
         }
 
         if (enemy != null && !enemy.IsAlive)
+        {
+            if (enemyAnimator != null)
+                enemyAnimator.SetShooting(false);
             return;
+        }
 
         if (targetPlayer == null)
+        {
+            if (enemyAnimator != null)
+                enemyAnimator.SetShooting(false);
             return;
+        }
 
         if (targetPlayer.IsDead)
         {
             seeingPlayer = false;
+            if (enemyAnimator != null)
+                enemyAnimator.SetShooting(false);
             return;
         }
 
         if (TrySeePlayer(out Vector3 dir))
         {
+            seeingPlayer = true;
+            lastSeenTime = Time.time;
+
+            Vector3 flatDir = new Vector3(dir.x, 0f, dir.z);
+            if (flatDir.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRotation = Quaternion.LookRotation(flatDir);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, shootTurnSpeed * Time.deltaTime);
+            }
+
+            if (enemyAnimator != null)
+                enemyAnimator.SetShooting(true);
+
             if (Time.time >= nextFireTime)
                 Shoot(dir);
+        }
+        else
+        {
+            seeingPlayer = false;
+
+            bool holdShootState = Time.time - lastSeenTime <= shootingStateHoldSeconds;
+
+            if (enemyAnimator != null)
+                enemyAnimator.SetShooting(holdShootState);
         }
     }
 
@@ -118,42 +157,35 @@ public class EnemyShooter : MonoBehaviour
                 Debug.DrawLine(eyePoint.position, hit.point, Color.red);
 
             PlayerHealth hitHealth = hit.collider.GetComponentInParent<PlayerHealth>();
-            if (hitHealth == null)
+
+            if (hit.collider.transform.root != targetPlayer.transform.root && hitHealth == null)
             {
                 seeingPlayer = false;
                 return false;
             }
-
-            seeingPlayer = true;
-            direction = dir;
-            return true;
         }
 
         if (drawDebugRays)
             Debug.DrawRay(eyePoint.position, dir * detectRange, Color.yellow);
 
-        seeingPlayer = false;
-        return false;
+        seeingPlayer = true;
+        direction = dir;
+        return true;
     }
 
     void Shoot(Vector3 direction)
     {
-        nextFireTime = Time.time + 1f / fireRate;
-
-        if (enemyAnimator != null)
-            enemyAnimator.TriggerShoot();
+        nextFireTime = Time.time + 1f / Mathf.Max(0.01f, fireRate);
 
         Vector3 start = gunMuzzle != null ? gunMuzzle.position : eyePoint.position;
 
         bool hasHit = Physics.Raycast(start, direction, out RaycastHit hit, detectRange, visionMask);
-
         Vector3 end = hasHit ? hit.point : start + direction * detectRange;
 
         if (tracerLine != null)
         {
             if (tracerRoutine != null)
                 StopCoroutine(tracerRoutine);
-
             tracerRoutine = StartCoroutine(ShowTracer(start, end));
         }
 
@@ -163,10 +195,6 @@ public class EnemyShooter : MonoBehaviour
             if (hitHealth != null)
                 hitHealth.TakeDamage(damagePerShot);
         }
-
-        Vector3 flatDir = new Vector3(direction.x, 0f, direction.z);
-        if (flatDir.sqrMagnitude > 0.001f)
-            transform.rotation = Quaternion.LookRotation(flatDir);
     }
 
     System.Collections.IEnumerator ShowTracer(Vector3 start, Vector3 end)
