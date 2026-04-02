@@ -8536,9 +8536,17 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 28758411558763744, guid: 24dd675b349a4f54b93d4970d90c82c9, type: 3}
+      propertyPath: burstSize
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 28758411558763744, guid: 24dd675b349a4f54b93d4970d90c82c9, type: 3}
       propertyPath: sessionManager
       value: 
       objectReference: {fileID: 230096037}
+    - target: {fileID: 28758411558763744, guid: 24dd675b349a4f54b93d4970d90c82c9, type: 3}
+      propertyPath: burstsPerSecond
+      value: 2.5
+      objectReference: {fileID: 0}
     - target: {fileID: 2347053112256437032, guid: 24dd675b349a4f54b93d4970d90c82c9, type: 3}
       propertyPath: sessionManager
       value: 

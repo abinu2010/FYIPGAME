@@ -1,0 +1,2 @@
+Timestamp,PlayerId,Round,PlayerDied,ShotsFired,Hits,Headshots,Kills,AccuracyPercent,HeadshotPercent,AvgFirstHitLatency,AvgTTKFromFirstHit,ShotsPerKill,AvgRecoilError,AvgSwitchTime,ReloadCount,AvgReloadTime,HitsPerMinute
+2026-04-02T19:13:33.1137359Z,efv,1,1,45,18,11,11,40.00,61.11,7.0534,0.3671,4.0909,0.0941,1.6779,1,0.8015,42.81
