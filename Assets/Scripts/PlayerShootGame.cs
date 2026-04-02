@@ -15,7 +15,7 @@ public class PlayerShootGame : MonoBehaviour
     [SerializeField] private bool burstFire = true;
     [SerializeField] private int burstSize = 3;
     [SerializeField] private float burstShotsPerSecond = 12f;
-    [SerializeField] private float burstsPerSecond = 4f;
+    [SerializeField] private float burstsPerSecond = 2.5f;
 
     [Header("Gun Recoil Object")]
     [SerializeField] private GunRecoil gunRecoil;
@@ -23,8 +23,10 @@ public class PlayerShootGame : MonoBehaviour
     [Header("View Recoil")]
     [SerializeField] private PlayerLook playerLook;
     [SerializeField] private bool applyViewRecoil = true;
-    [SerializeField] private float recoilPitchPerShot = 1.2f;
-    [SerializeField] private float recoilYawJitter = 0.35f;
+    [SerializeField] private float recoilPitchShot1 = 0.6f;
+    [SerializeField] private float recoilPitchShot2 = 1.0f;
+    [SerializeField] private float recoilPitchShot3 = 1.35f;
+    [SerializeField] private float recoilYawJitter = 0.2f;
 
     [Header("Visual Effects")]
     [SerializeField] private Transform muzzleTransform;
@@ -37,6 +39,7 @@ public class PlayerShootGame : MonoBehaviour
     private int bulletsInMag;
     private bool isReloading;
     private bool burstInProgress;
+    private int currentBurstShotIndex;
 
     void Start()
     {
@@ -80,6 +83,7 @@ public class PlayerShootGame : MonoBehaviour
         isReloading = false;
         burstInProgress = false;
         bulletsInMag = magazineSize;
+        currentBurstShotIndex = 0;
 
         if (tracerLine != null)
             tracerLine.enabled = false;
@@ -106,6 +110,7 @@ public class PlayerShootGame : MonoBehaviour
     IEnumerator BurstCoroutine()
     {
         burstInProgress = true;
+        currentBurstShotIndex = 0;
 
         if (sessionManager != null)
             sessionManager.BeginBurst();
@@ -131,6 +136,7 @@ public class PlayerShootGame : MonoBehaviour
             sessionManager.EndBurst();
 
         burstInProgress = false;
+        currentBurstShotIndex = 0;
 
         if (bulletsInMag <= 0)
             StartReload();
@@ -148,6 +154,7 @@ public class PlayerShootGame : MonoBehaviour
         }
 
         nextActionTime = Time.time + 1f / Mathf.Max(0.01f, fireRate);
+        currentBurstShotIndex = 0;
         FireOneShot();
 
         if (bulletsInMag <= 0)
@@ -164,16 +171,33 @@ public class PlayerShootGame : MonoBehaviour
             sessionManager.UpdateAmmoDisplay(bulletsInMag, magazineSize, bulletsInMag <= 0);
         }
 
+        FireRay();
+
         if (gunRecoil != null)
             gunRecoil.ApplyRecoil();
 
         if (applyViewRecoil && playerLook != null)
         {
+            float pitch = GetPitchForCurrentShot();
             float yaw = recoilYawJitter > 0f ? Random.Range(-recoilYawJitter, recoilYawJitter) : 0f;
-            playerLook.AddRecoil(recoilPitchPerShot, yaw);
+            playerLook.AddRecoil(pitch, yaw);
         }
 
-        FireRay();
+        currentBurstShotIndex++;
+    }
+
+    float GetPitchForCurrentShot()
+    {
+        if (!burstFire)
+            return recoilPitchShot1;
+
+        if (currentBurstShotIndex <= 0)
+            return recoilPitchShot1;
+
+        if (currentBurstShotIndex == 1)
+            return recoilPitchShot2;
+
+        return recoilPitchShot3;
     }
 
     void FireRay()
@@ -210,6 +234,7 @@ public class PlayerShootGame : MonoBehaviour
         if (sessionManager != null)
         {
             sessionManager.RegisterEnemyHitDetailed(hb.Owner, isHead, hit.point, aimCenter);
+
             if (burstFire || burstInProgress)
                 sessionManager.RegisterBurstHitPoint(hb.Owner, hit.point);
         }
@@ -238,6 +263,7 @@ public class PlayerShootGame : MonoBehaviour
 
         bulletsInMag = magazineSize;
         isReloading = false;
+        currentBurstShotIndex = 0;
 
         if (sessionManager != null)
         {
