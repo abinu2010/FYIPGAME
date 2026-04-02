@@ -38,6 +38,7 @@ public class Enemy : MonoBehaviour
 
     private bool lastHitHeadshot;
     private float lastSpawnTime;
+    private Coroutine respawnRoutine;
 
     public bool IsAlive => isAlive;
     public float LastSpawnTime => lastSpawnTime;
@@ -63,13 +64,37 @@ public class Enemy : MonoBehaviour
         SpawnNew();
     }
 
+    public void ForceResetForRoundStart()
+    {
+        if (respawnRoutine != null)
+        {
+            StopCoroutine(respawnRoutine);
+            respawnRoutine = null;
+        }
+
+        SpawnNew();
+    }
+
     public void SpawnNew()
     {
+        if (respawnRoutine != null)
+        {
+            StopCoroutine(respawnRoutine);
+            respawnRoutine = null;
+        }
+
         Vector3 pos = spawnPoint != null ? spawnPoint.position : spawnPosition;
         Quaternion rot = spawnPoint != null ? spawnPoint.rotation : spawnRotation;
 
-        if (agent != null && agent.enabled)
-            agent.enabled = false;
+        if (agent != null)
+        {
+            if (agent.enabled)
+            {
+                agent.isStopped = true;
+                agent.ResetPath();
+                agent.enabled = false;
+            }
+        }
 
         transform.position = pos;
         transform.rotation = rot;
@@ -83,13 +108,19 @@ public class Enemy : MonoBehaviour
         SetHitCollidersEnabled(true);
 
         if (agent != null)
+        {
             agent.enabled = true;
+            agent.isStopped = false;
+        }
 
         if (chase != null)
             chase.enabled = true;
 
         if (shooter != null)
+        {
             shooter.enabled = true;
+            shooter.ResetShooterState();
+        }
 
         if (enemyAnimator != null)
             enemyAnimator.PlaySpawn();
@@ -154,7 +185,10 @@ public class Enemy : MonoBehaviour
             chase.enabled = false;
 
         if (shooter != null)
+        {
+            shooter.ResetShooterState();
             shooter.enabled = false;
+        }
 
         if (enemyAnimator != null)
             enemyAnimator.PlayDeath();
@@ -162,7 +196,7 @@ public class Enemy : MonoBehaviour
         if (sessionManager != null)
             sessionManager.RegisterEnemyKill(this, lastHitHeadshot);
 
-        StartCoroutine(RespawnRoutine());
+        respawnRoutine = StartCoroutine(RespawnRoutine());
     }
 
     System.Collections.IEnumerator RespawnRoutine()
@@ -170,6 +204,7 @@ public class Enemy : MonoBehaviour
         yield return new WaitForSeconds(deathAnimationSeconds);
         SetRenderersEnabled(false);
         yield return new WaitForSeconds(Mathf.Max(0f, respawnDelaySeconds - deathAnimationSeconds));
+        respawnRoutine = null;
         SpawnNew();
     }
 }

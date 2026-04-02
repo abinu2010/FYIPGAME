@@ -17,6 +17,8 @@ public class GameSessionManger : MonoBehaviour
     [SerializeField] private PlayerMovement playerMovement;
     [SerializeField] private PlayerLook playerLook;
     [SerializeField] private PlayerHealth playerHealth;
+    [SerializeField] private Transform playerRoot;
+    [SerializeField] private Transform playerSpawnPoint;
 
     [Header("UI")]
     [SerializeField] private TMP_Text timerText;
@@ -25,6 +27,7 @@ public class GameSessionManger : MonoBehaviour
     [SerializeField] private TMP_Text healthText;
     [SerializeField] private TMP_Text ammoText;
     [SerializeField] private TMP_Text summaryText;
+    [SerializeField] private GameObject panelSummary;
     [SerializeField] private GameObject startButton;
     [SerializeField] private TMP_InputField playerIdInput;
 
@@ -64,6 +67,12 @@ public class GameSessionManger : MonoBehaviour
     private float switchTimeSum;
     private int switchTimeCount;
 
+    private Vector3 cachedPlayerStartPosition;
+    private Quaternion cachedPlayerStartRotation;
+    private bool cachedPlayerStartValid;
+
+    private Enemy[] cachedEnemies;
+
     private class Engagement
     {
         public int engagementIndex;
@@ -87,7 +96,9 @@ public class GameSessionManger : MonoBehaviour
 
     void Start()
     {
+        CacheSceneReferences();
         ResetRoundState();
+        ResetWorldToRoundStart();
         PrepareCsvFiles();
     }
 
@@ -115,69 +126,26 @@ public class GameSessionManger : MonoBehaviour
         if (roundIndex >= maxRounds)
             return;
 
+        CacheSceneReferences();
         LockIdentity();
 
         roundIndex++;
-
         roundActive = true;
         timeRemaining = roundDurationSeconds;
         roundStartTime = Time.time;
 
-        shotsFired = 0;
-        hits = 0;
-        headshots = 0;
-        kills = 0;
-
-        reloadCount = 0;
-        reloadStartTime = 0f;
-        reloadTimeSum = 0f;
-        reloadActive = false;
-
-        recoilSamples = 0;
-        recoilErrorSum = 0f;
-
-        burstActive = false;
-        burstEnemy = null;
-        burstHitPoints.Clear();
-
-        lastKillTime = 0f;
-        awaitingSwitch = false;
-        switchTimeSum = 0f;
-        switchTimeCount = 0;
-
-        engagementCounter = 0;
-        engagements.Clear();
-
-        sumFirstHitLatency = 0f;
-        countFirstHitLatency = 0;
-
-        sumTtkFromFirstHit = 0f;
-        countTtkFromFirstHit = 0;
-
-        Enemy[] existingEnemies = Object.FindObjectsByType<Enemy>(FindObjectsSortMode.None);
-        for (int i = 0; i < existingEnemies.Length; i++)
-        {
-            if (existingEnemies[i] != null && existingEnemies[i].IsAlive)
-                NotifyEnemySpawned(existingEnemies[i]);
-        }
-
-        if (playerHealth != null)
-            playerHealth.ResetHealth();
-
-        if (playerShoot != null)
-            playerShoot.enabled = true;
-
-        if (playerMovement != null)
-            playerMovement.enabled = true;
-
-        if (playerLook != null)
-            playerLook.enabled = true;
+        ResetPerRoundMetrics();
+        ResetWorldToRoundStart();
+        SetPlayerControlEnabled(true);
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
         if (startButton != null)
             startButton.SetActive(false);
+
+        if (panelSummary != null)
+            panelSummary.SetActive(false);
 
         if (summaryText != null)
             summaryText.text = "";
@@ -197,21 +165,13 @@ public class GameSessionManger : MonoBehaviour
             EndBurstInternal();
 
         roundActive = false;
-
-        if (playerShoot != null)
-            playerShoot.enabled = false;
-
-        if (playerMovement != null)
-            playerMovement.enabled = false;
-
-        if (playerLook != null)
-            playerLook.enabled = false;
+        SetPlayerControlEnabled(false);
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        if (startButton != null)
-            startButton.SetActive(true);
+        if (panelSummary != null)
+            panelSummary.SetActive(true);
 
         float accuracyPercent = shotsFired > 0 ? (hits / (float)shotsFired) * 100f : 0f;
         float headshotPercent = hits > 0 ? (headshots / (float)hits) * 100f : 0f;
@@ -226,7 +186,6 @@ public class GameSessionManger : MonoBehaviour
         float hitsPerMinute = hits > 0 ? (hits / elapsed) * 60f : 0f;
 
         float shotsPerKill = kills > 0 ? (shotsFired / (float)kills) : 0f;
-
         float avgReloadTime = reloadCount > 0 ? reloadTimeSum / reloadCount : 0f;
 
         string diedText = playerDied ? "Player died" : "Time up";
@@ -246,8 +205,14 @@ public class GameSessionManger : MonoBehaviour
 
         WriteRoundSummaryCsv(playerDied, accuracyPercent, headshotPercent, avgFirstHitLatency, avgTtkFromFirstHit, shotsPerKill, avgRecoilError, avgSwitchTime, reloadCount, avgReloadTime, hitsPerMinute);
 
-        if (roundIndex >= maxRounds && startButton != null)
-            startButton.SetActive(false);
+        ResetWorldToRoundStart();
+
+        bool hasMoreRounds = roundIndex < maxRounds;
+        if (startButton != null)
+            startButton.SetActive(hasMoreRounds);
+
+        if (!hasMoreRounds && summaryText != null)
+            summaryText.text += "\n\nSession finished";
 
         UpdateTimerUI();
         UpdateAccuracyUI();
@@ -511,16 +476,46 @@ public class GameSessionManger : MonoBehaviour
     {
         roundActive = false;
         timeRemaining = roundDurationSeconds;
-
-        shotsFired = 0;
-        hits = 0;
-        headshots = 0;
-        kills = 0;
-
+        roundStartTime = 0f;
         roundIndex = 0;
 
         identityLocked = false;
         lockedPlayerId = "Player";
+
+        ResetPerRoundMetrics();
+        SetPlayerControlEnabled(false);
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        if (startButton != null)
+            startButton.SetActive(true);
+
+        if (panelSummary != null)
+            panelSummary.SetActive(true);
+
+        if (summaryText != null)
+            summaryText.text = "Enter your name and Press Start";
+
+        if (playerIdInput != null)
+        {
+            playerIdInput.interactable = true;
+            playerIdInput.readOnly = false;
+            playerIdInput.gameObject.SetActive(true);
+        }
+
+        UpdateTimerUI();
+        UpdateAccuracyUI();
+        UpdateKillsUI();
+        UpdateHealthUI();
+    }
+
+    private void ResetPerRoundMetrics()
+    {
+        shotsFired = 0;
+        hits = 0;
+        headshots = 0;
+        kills = 0;
 
         reloadCount = 0;
         reloadStartTime = 0f;
@@ -534,28 +529,116 @@ public class GameSessionManger : MonoBehaviour
         burstEnemy = null;
         burstHitPoints.Clear();
 
-        if (playerShoot != null)
-            playerShoot.enabled = false;
+        lastKillTime = 0f;
+        awaitingSwitch = false;
+        switchTimeSum = 0f;
+        switchTimeCount = 0;
+
+        engagementCounter = 0;
+        engagements.Clear();
+
+        sumFirstHitLatency = 0f;
+        countFirstHitLatency = 0;
+
+        sumTtkFromFirstHit = 0f;
+        countTtkFromFirstHit = 0;
+    }
+
+    private void CacheSceneReferences()
+    {
+        if (playerRoot == null)
+        {
+            if (playerMovement != null)
+                playerRoot = playerMovement.transform;
+            else if (playerHealth != null)
+                playerRoot = playerHealth.transform;
+            else if (playerLook != null && playerLook.transform.root != null)
+                playerRoot = playerLook.transform.root;
+        }
+
+        if (!cachedPlayerStartValid && playerRoot != null)
+        {
+            cachedPlayerStartPosition = playerRoot.position;
+            cachedPlayerStartRotation = playerRoot.rotation;
+            cachedPlayerStartValid = true;
+        }
+
+        cachedEnemies = Object.FindObjectsByType<Enemy>(FindObjectsSortMode.None);
+    }
+
+    private void ResetWorldToRoundStart()
+    {
+        ResetPlayerForRoundStart();
+        ResetEnemiesForRoundStart();
+    }
+
+    private void ResetPlayerForRoundStart()
+    {
+        if (playerHealth != null)
+            playerHealth.ResetHealth();
 
         if (playerMovement != null)
-            playerMovement.enabled = false;
+            playerMovement.ResetMovementState();
+
+        if (playerShoot != null)
+            playerShoot.ResetForNewRound();
+
+        if (playerRoot != null)
+        {
+            Vector3 targetPosition = cachedPlayerStartValid ? cachedPlayerStartPosition : playerRoot.position;
+            Quaternion targetRotation = cachedPlayerStartValid ? cachedPlayerStartRotation : playerRoot.rotation;
+
+            if (playerSpawnPoint != null)
+            {
+                targetPosition = playerSpawnPoint.position;
+                targetRotation = playerSpawnPoint.rotation;
+            }
+
+            CharacterController controller = playerRoot.GetComponent<CharacterController>();
+            if (controller != null)
+                controller.enabled = false;
+
+            playerRoot.position = targetPosition;
+            playerRoot.rotation = targetRotation;
+
+            if (controller != null)
+                controller.enabled = true;
+        }
 
         if (playerLook != null)
-            playerLook.enabled = false;
+            playerLook.ResetLookInstant();
 
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
-        if (startButton != null)
-            startButton.SetActive(true);
-
-        if (summaryText != null)
-            summaryText.text = "Press Start";
-
-        UpdateTimerUI();
-        UpdateAccuracyUI();
-        UpdateKillsUI();
         UpdateHealthUI();
+    }
+
+    private void ResetEnemiesForRoundStart()
+    {
+        if (cachedEnemies == null || cachedEnemies.Length == 0)
+            CacheSceneReferences();
+
+        if (cachedEnemies == null)
+            return;
+
+        for (int i = 0; i < cachedEnemies.Length; i++)
+        {
+            Enemy enemy = cachedEnemies[i];
+            if (enemy == null)
+                continue;
+
+            enemy.ForceResetForRoundStart();
+        }
+    }
+
+    private void SetPlayerControlEnabled(bool value)
+    {
+        if (playerShoot != null)
+            playerShoot.enabled = value;
+
+        if (playerMovement != null)
+            playerMovement.enabled = value;
+
+        if (playerLook != null)
+            playerLook.enabled = value;
     }
 
     private void LockIdentity()
@@ -589,14 +672,27 @@ public class GameSessionManger : MonoBehaviour
         if (!writeCsv)
             return;
 
-        killLogPath = Path.Combine(Application.persistentDataPath, killLogFileName);
-        roundSummaryPath = Path.Combine(Application.persistentDataPath, roundSummaryFileName);
+        string csvFolder = GetCsvFolder();
+        Directory.CreateDirectory(csvFolder);
+
+        killLogPath = Path.Combine(csvFolder, killLogFileName);
+        roundSummaryPath = Path.Combine(csvFolder, roundSummaryFileName);
 
         if (!File.Exists(killLogPath))
             File.WriteAllText(killLogPath, "Timestamp,PlayerId,Round,EngagementIndex,EnemyName,FirstHitLatency,TTKFromFirstHit,HeadshotKill\n");
 
         if (!File.Exists(roundSummaryPath))
             File.WriteAllText(roundSummaryPath, "Timestamp,PlayerId,Round,PlayerDied,ShotsFired,Hits,Headshots,Kills,AccuracyPercent,HeadshotPercent,AvgFirstHitLatency,AvgTTKFromFirstHit,ShotsPerKill,AvgRecoilError,AvgSwitchTime,ReloadCount,AvgReloadTime,HitsPerMinute\n");
+
+        Debug.Log("CSV folder: " + csvFolder);
+    }
+
+    private string GetCsvFolder()
+    {
+        if (Application.isEditor)
+            return Path.Combine(Directory.GetParent(Application.dataPath).FullName, "EditorCsv");
+
+        return Directory.GetParent(Application.dataPath).FullName;
     }
 
     private void WriteKillLogCsv(Enemy enemy, Engagement e, float firstHitLatency, float ttkFromFirstHit, bool headshotKill)

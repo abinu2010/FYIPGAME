@@ -1,4 +1,5 @@
 using UnityEngine;
+
 public class PlayerMovement : MonoBehaviour
 {
     [SerializeField] float walkSpeed = 5f;
@@ -43,5 +44,10 @@ public class PlayerMovement : MonoBehaviour
 
         velocity.y += gravity * Time.deltaTime;
         controller.Move(velocity * Time.deltaTime);
+    }
+
+    public void ResetMovementState()
+    {
+        velocity = Vector3.zero;
     }
 }

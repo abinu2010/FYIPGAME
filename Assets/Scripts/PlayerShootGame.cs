@@ -40,9 +40,7 @@ public class PlayerShootGame : MonoBehaviour
 
     void Start()
     {
-        bulletsInMag = magazineSize;
-        if (sessionManager != null)
-            sessionManager.UpdateAmmoDisplay(bulletsInMag, magazineSize, false);
+        ResetForNewRound();
     }
 
     void Update()
@@ -72,6 +70,22 @@ public class PlayerShootGame : MonoBehaviour
             if (Input.GetButton("Fire1"))
                 TryToFireSingle();
         }
+    }
+
+    public void ResetForNewRound()
+    {
+        StopAllCoroutines();
+
+        nextActionTime = 0f;
+        isReloading = false;
+        burstInProgress = false;
+        bulletsInMag = magazineSize;
+
+        if (tracerLine != null)
+            tracerLine.enabled = false;
+
+        if (sessionManager != null)
+            sessionManager.UpdateAmmoDisplay(bulletsInMag, magazineSize, false);
     }
 
     void TryStartBurst()

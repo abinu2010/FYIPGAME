@@ -29,4 +29,10 @@ public class PlayerLook : MonoBehaviour
         if (playerBody != null)
             playerBody.Rotate(Vector3.up * yawDegrees);
     }
+
+    public void ResetLookInstant(float pitch = 0f)
+    {
+        xRotation = Mathf.Clamp(pitch, -80f, 80f);
+        transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+    }
 }

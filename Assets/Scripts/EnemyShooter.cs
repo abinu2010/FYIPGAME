@@ -58,14 +58,31 @@ public class EnemyShooter : MonoBehaviour
         }
     }
 
+    public void ResetShooterState()
+    {
+        nextFireTime = 0f;
+        lastSeenTime = -999f;
+        seeingPlayer = false;
+
+        if (tracerRoutine != null)
+        {
+            StopCoroutine(tracerRoutine);
+            tracerRoutine = null;
+        }
+
+        if (tracerLine != null)
+            tracerLine.enabled = false;
+
+        if (enemyAnimator != null)
+            enemyAnimator.SetShooting(false);
+    }
+
     void Update()
     {
         GameSessionManger sm = enemy != null ? enemy.SessionManager : null;
         if (sm != null && !sm.IsRoundActive)
         {
-            seeingPlayer = false;
-            if (enemyAnimator != null)
-                enemyAnimator.SetShooting(false);
+            ResetShooterState();
             return;
         }
 
