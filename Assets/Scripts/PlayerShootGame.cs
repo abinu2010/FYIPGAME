@@ -236,7 +236,7 @@ public class PlayerShootGame : MonoBehaviour
             sessionManager.RegisterEnemyHitDetailed(hb.Owner, isHead, hit.point, aimCenter);
 
             if (burstFire || burstInProgress)
-                sessionManager.RegisterBurstHitPoint(hb.Owner, hit.point);
+                sessionManager.RegisterBurstHitPoint(hb.Owner, hit.point, aimCenter);
         }
 
         hb.Owner.TakeHit(hb.HitArea);

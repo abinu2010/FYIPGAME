@@ -60,7 +60,14 @@ public class GameSessionManger : MonoBehaviour
 
     private bool burstActive;
     private Enemy burstEnemy;
-    private readonly List<Vector3> burstHitPoints = new List<Vector3>(8);
+
+    private struct BurstHitSample
+    {
+        public Vector3 hitPoint;
+        public Vector3 aimCenter;
+    }
+
+    private readonly List<BurstHitSample> burstHitSamples = new List<BurstHitSample>(8);
 
     private float lastKillTime;
     private bool awaitingSwitch;
@@ -232,10 +239,10 @@ public class GameSessionManger : MonoBehaviour
 
         burstActive = true;
         burstEnemy = null;
-        burstHitPoints.Clear();
+        burstHitSamples.Clear();
     }
 
-    public void RegisterBurstHitPoint(Enemy enemy, Vector3 hitPoint)
+    public void RegisterBurstHitPoint(Enemy enemy, Vector3 hitPoint, Vector3 aimCenter)
     {
         if (!roundActive)
             return;
@@ -251,7 +258,11 @@ public class GameSessionManger : MonoBehaviour
         else if (burstEnemy != enemy)
             return;
 
-        burstHitPoints.Add(hitPoint);
+        BurstHitSample sample = new BurstHitSample();
+        sample.hitPoint = hitPoint;
+        sample.aimCenter = aimCenter;
+
+        burstHitSamples.Add(sample);
     }
 
     public void EndBurst()
@@ -269,17 +280,13 @@ public class GameSessionManger : MonoBehaviour
     {
         burstActive = false;
 
-        int count = burstHitPoints.Count;
-        if (count >= 2)
+        int count = burstHitSamples.Count;
+        if (count > 0)
         {
-            Vector3 center = Vector3.zero;
-            for (int i = 0; i < count; i++)
-                center += burstHitPoints[i];
-            center /= count;
-
             float sumDist = 0f;
+
             for (int i = 0; i < count; i++)
-                sumDist += Vector3.Distance(center, burstHitPoints[i]);
+                sumDist += Vector3.Distance(burstHitSamples[i].hitPoint, burstHitSamples[i].aimCenter);
 
             float meanDist = sumDist / count;
 
@@ -287,7 +294,7 @@ public class GameSessionManger : MonoBehaviour
             recoilErrorSum += meanDist;
         }
 
-        burstHitPoints.Clear();
+        burstHitSamples.Clear();
         burstEnemy = null;
     }
 
@@ -527,7 +534,7 @@ public class GameSessionManger : MonoBehaviour
 
         burstActive = false;
         burstEnemy = null;
-        burstHitPoints.Clear();
+        burstHitSamples.Clear();
 
         lastKillTime = 0f;
         awaitingSwitch = false;
