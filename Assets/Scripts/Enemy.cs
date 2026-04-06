@@ -22,6 +22,7 @@ public class Enemy : MonoBehaviour
     [SerializeField] private float respawnDelaySeconds = 2f;
     [SerializeField] private float deathAnimationSeconds = 1.6f;
     [SerializeField] private Transform spawnPoint;
+    [SerializeField] private float navMeshSnapDistance = 2f;
 
     private int currentHealth;
     private bool isAlive = true;
@@ -86,18 +87,17 @@ public class Enemy : MonoBehaviour
         Vector3 pos = spawnPoint != null ? spawnPoint.position : spawnPosition;
         Quaternion rot = spawnPoint != null ? spawnPoint.rotation : spawnRotation;
 
-        if (agent != null)
+        if (NavMesh.SamplePosition(pos, out NavMeshHit navHit, navMeshSnapDistance, NavMesh.AllAreas))
+            pos = navHit.position;
+
+        if (agent != null && agent.enabled)
         {
-            if (agent.enabled)
-            {
-                agent.isStopped = true;
-                agent.ResetPath();
-                agent.enabled = false;
-            }
+            agent.isStopped = true;
+            agent.ResetPath();
+            agent.enabled = false;
         }
 
-        transform.position = pos;
-        transform.rotation = rot;
+        transform.SetPositionAndRotation(pos, rot);
 
         currentHealth = baseHealth;
         isAlive = true;
@@ -110,11 +110,20 @@ public class Enemy : MonoBehaviour
         if (agent != null)
         {
             agent.enabled = true;
-            agent.isStopped = false;
+            agent.updateRotation = false;
+
+            if (agent.isOnNavMesh)
+                agent.Warp(pos);
+
+            agent.isStopped = true;
+            agent.ResetPath();
         }
 
         if (chase != null)
+        {
             chase.enabled = true;
+            chase.ResetForSpawn();
+        }
 
         if (shooter != null)
         {
@@ -178,6 +187,7 @@ public class Enemy : MonoBehaviour
                 agent.isStopped = true;
                 agent.ResetPath();
             }
+
             agent.enabled = false;
         }
 

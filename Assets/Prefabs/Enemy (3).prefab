@@ -128,6 +128,7 @@ MonoBehaviour:
   respawnDelaySeconds: 1
   deathAnimationSeconds: 1.6
   spawnPoint: {fileID: 0}
+  navMeshSnapDistance: 2
 --- !u!114 &5231503402321619477
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -149,7 +150,7 @@ MonoBehaviour:
   visionMask:
     serializedVersion: 2
     m_Bits: 4294967295
-  detectRange: 50
+  detectRange: 20
   fieldOfViewDegrees: 360
   fireRate: 2
   damagePerShot: 2
@@ -175,6 +176,7 @@ MonoBehaviour:
   moveSpeed: 3
   stopDistance: 5
   turnSpeed: 10
+  repathInterval: 0.25
   autoAggroOnStart: 1
 --- !u!195 &5199354546905823866
 NavMeshAgent:

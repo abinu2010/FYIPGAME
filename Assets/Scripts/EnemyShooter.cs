@@ -27,11 +27,12 @@ public class EnemyShooter : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool drawDebugRays = true;
 
-    float nextFireTime;
-    float lastSeenTime = -999f;
-    bool seeingPlayer;
-    Collider targetCollider;
-    Coroutine tracerRoutine;
+    private float nextFireTime;
+    private float lastSeenTime = -999f;
+    private bool seeingPlayer;
+    private Collider targetCollider;
+    private CharacterController targetController;
+    private Coroutine tracerRoutine;
 
     public bool IsSeeingPlayer => seeingPlayer;
     public PlayerHealth TargetPlayer => targetPlayer;
@@ -47,8 +48,7 @@ public class EnemyShooter : MonoBehaviour
         if (eyePoint == null)
             eyePoint = transform;
 
-        if (targetPlayer != null)
-            targetCollider = targetPlayer.GetComponent<Collider>();
+        CacheTargetRefs();
 
         if (tracerLine != null)
         {
@@ -56,6 +56,21 @@ public class EnemyShooter : MonoBehaviour
             tracerLine.positionCount = 2;
             tracerLine.useWorldSpace = true;
         }
+    }
+
+    void CacheTargetRefs()
+    {
+        if (targetPlayer == null)
+            return;
+
+        if (targetCollider == null)
+            targetCollider = targetPlayer.GetComponentInChildren<Collider>();
+
+        if (targetController == null)
+            targetController = targetPlayer.GetComponentInParent<CharacterController>();
+
+        if (targetController == null)
+            targetController = targetPlayer.GetComponent<CharacterController>();
     }
 
     public void ResetShooterState()
@@ -108,23 +123,20 @@ public class EnemyShooter : MonoBehaviour
             return;
         }
 
-        if (TrySeePlayer(out Vector3 dir))
+        CacheTargetRefs();
+
+        if (TrySeePlayer(out Vector3 targetPoint))
         {
             seeingPlayer = true;
             lastSeenTime = Time.time;
 
-            Vector3 flatDir = new Vector3(dir.x, 0f, dir.z);
-            if (flatDir.sqrMagnitude > 0.001f)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(flatDir);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, shootTurnSpeed * Time.deltaTime);
-            }
+            RotateTowards(targetPoint);
 
             if (enemyAnimator != null)
                 enemyAnimator.SetShooting(true);
 
             if (Time.time >= nextFireTime)
-                Shoot(dir);
+                Shoot(targetPoint);
         }
         else
         {
@@ -137,16 +149,37 @@ public class EnemyShooter : MonoBehaviour
         }
     }
 
-    bool TrySeePlayer(out Vector3 direction)
+    Vector3 GetTargetPoint()
     {
-        direction = Vector3.zero;
+        if (targetCollider != null)
+            return targetCollider.bounds.center;
 
-        if (targetCollider == null && targetPlayer != null)
-            targetCollider = targetPlayer.GetComponent<Collider>();
+        if (targetController != null)
+            return targetController.bounds.center;
 
-        Vector3 targetPoint = targetCollider != null
-            ? targetCollider.bounds.center
-            : targetPlayer.transform.position;
+        return targetPlayer.transform.position + Vector3.up;
+    }
+
+    void RotateTowards(Vector3 targetPoint)
+    {
+        Vector3 flatDir = targetPoint - transform.position;
+        flatDir.y = 0f;
+
+        if (flatDir.sqrMagnitude <= 0.001f)
+            return;
+
+        Quaternion targetRotation = Quaternion.LookRotation(flatDir.normalized);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, shootTurnSpeed * Time.deltaTime);
+    }
+
+    bool TrySeePlayer(out Vector3 targetPoint)
+    {
+        targetPoint = Vector3.zero;
+
+        if (targetPlayer == null || eyePoint == null)
+            return false;
+
+        targetPoint = GetTargetPoint();
 
         Vector3 toPlayer = targetPoint - eyePoint.position;
         float distance = toPlayer.magnitude;
@@ -155,63 +188,53 @@ public class EnemyShooter : MonoBehaviour
             Debug.DrawLine(eyePoint.position, targetPoint, Color.green);
 
         if (distance > detectRange)
-        {
-            seeingPlayer = false;
             return false;
-        }
 
         Vector3 dir = toPlayer.normalized;
         float angle = Vector3.Angle(eyePoint.forward, dir);
         if (angle > fieldOfViewDegrees * 0.5f)
-        {
-            seeingPlayer = false;
             return false;
-        }
 
-        if (Physics.Raycast(eyePoint.position, dir, out RaycastHit hit, distance, visionMask))
+        if (Physics.Raycast(eyePoint.position, dir, out RaycastHit hit, distance, visionMask, QueryTriggerInteraction.Ignore))
         {
             if (drawDebugRays)
                 Debug.DrawLine(eyePoint.position, hit.point, Color.red);
 
             PlayerHealth hitHealth = hit.collider.GetComponentInParent<PlayerHealth>();
-
-            if (hit.collider.transform.root != targetPlayer.transform.root && hitHealth == null)
-            {
-                seeingPlayer = false;
+            if (hitHealth == null || hitHealth.transform.root != targetPlayer.transform.root)
                 return false;
-            }
         }
 
         if (drawDebugRays)
             Debug.DrawRay(eyePoint.position, dir * detectRange, Color.yellow);
 
-        seeingPlayer = true;
-        direction = dir;
         return true;
     }
 
-    void Shoot(Vector3 direction)
+    void Shoot(Vector3 targetPoint)
     {
         nextFireTime = Time.time + 1f / Mathf.Max(0.01f, fireRate);
 
-        Vector3 start = gunMuzzle != null ? gunMuzzle.position : eyePoint.position;
+        Vector3 hitRayOrigin = eyePoint != null ? eyePoint.position : transform.position;
+        Vector3 hitDir = (targetPoint - hitRayOrigin).normalized;
+        Vector3 tracerStart = gunMuzzle != null ? gunMuzzle.position : hitRayOrigin;
 
-        bool hasHit = Physics.Raycast(start, direction, out RaycastHit hit, detectRange, visionMask);
-        Vector3 end = hasHit ? hit.point : start + direction * detectRange;
+        bool hasHit = Physics.Raycast(hitRayOrigin, hitDir, out RaycastHit hit, detectRange, visionMask, QueryTriggerInteraction.Ignore);
+        Vector3 tracerEnd = hasHit ? hit.point : hitRayOrigin + hitDir * detectRange;
 
         if (tracerLine != null)
         {
             if (tracerRoutine != null)
                 StopCoroutine(tracerRoutine);
-            tracerRoutine = StartCoroutine(ShowTracer(start, end));
+            tracerRoutine = StartCoroutine(ShowTracer(tracerStart, tracerEnd));
         }
 
-        if (hasHit)
-        {
-            PlayerHealth hitHealth = hit.collider.GetComponentInParent<PlayerHealth>();
-            if (hitHealth != null)
-                hitHealth.TakeDamage(damagePerShot);
-        }
+        if (!hasHit)
+            return;
+
+        PlayerHealth hitHealth = hit.collider.GetComponentInParent<PlayerHealth>();
+        if (hitHealth != null && hitHealth.transform.root == targetPlayer.transform.root)
+            hitHealth.TakeDamage(damagePerShot);
     }
 
     System.Collections.IEnumerator ShowTracer(Vector3 start, Vector3 end)

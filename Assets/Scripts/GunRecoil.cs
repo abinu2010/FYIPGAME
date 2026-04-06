@@ -9,7 +9,7 @@ public class GunRecoil : MonoBehaviour
 
     private Vector3 defaultLocalPos;
 
-    void Start()
+    void Awake()
     {
         if (gunTransform != null)
             defaultLocalPos = gunTransform.localPosition;
@@ -30,5 +30,13 @@ public class GunRecoil : MonoBehaviour
 
         Vector3 kick = new Vector3(0f, kickUp, -kickBack);
         gunTransform.localPosition += kick;
+    }
+
+    public void ResetInstant()
+    {
+        if (gunTransform == null)
+            return;
+
+        gunTransform.localPosition = defaultLocalPos;
     }
 }

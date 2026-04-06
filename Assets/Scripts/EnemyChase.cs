@@ -13,15 +13,14 @@ public class EnemyChase : MonoBehaviour
     [SerializeField] private float moveSpeed = 3f;
     [SerializeField] private float stopDistance = 3f;
     [SerializeField] private float turnSpeed = 10f;
+    [SerializeField] private float repathInterval = 0.25f;
 
     [Header("Aggro")]
     [SerializeField] private bool autoAggroOnStart = true;
 
-    NavMeshAgent agent;
-    bool aggro;
-    float repathTimer;
-    const float repathInterval = 0.25f;
-    bool warnedNoTarget;
+    private NavMeshAgent agent;
+    private bool aggro;
+    private float repathTimer;
 
     public bool Aggro => aggro;
 
@@ -38,22 +37,18 @@ public class EnemyChase : MonoBehaviour
         if (shooter == null)
             shooter = GetComponent<EnemyShooter>();
 
-        // Try to grab the player from the shooter if not set
         if (target == null && shooter != null && shooter.TargetPlayer != null)
             target = shooter.TargetPlayer.transform;
 
-        agent.speed = moveSpeed;
-        agent.stoppingDistance = stopDistance;
-        agent.updateRotation = false;
-        agent.isStopped = true;
-
-        if (autoAggroOnStart)
+        if (agent != null)
         {
-            aggro = true;
-            Debug.Log("EnemyChase: Auto aggro on " + gameObject.name);
+            agent.speed = moveSpeed;
+            agent.stoppingDistance = stopDistance;
+            agent.updateRotation = false;
+            agent.isStopped = true;
         }
 
-        Debug.Log("EnemyChase: Ready on " + gameObject.name);
+        aggro = autoAggroOnStart;
     }
 
     void Update()
@@ -61,83 +56,119 @@ public class EnemyChase : MonoBehaviour
         GameSessionManger sm = enemy != null ? enemy.SessionManager : null;
         if (sm != null && !sm.IsRoundActive)
         {
-            if (agent != null && !agent.isStopped)
-            {
-                agent.isStopped = true;
-                agent.ResetPath();
-            }
+            StopAgent();
             return;
         }
 
         if (enemy != null && !enemy.IsAlive)
         {
-            if (!agent.isStopped)
-            {
-                agent.isStopped = true;
-                agent.ResetPath();
-            }
+            StopAgent();
             return;
         }
 
+        ResolveTarget();
         if (target == null)
         {
-            if (shooter != null && shooter.TargetPlayer != null)
-                target = shooter.TargetPlayer.transform;
-
-            if (target == null)
-                return;
-        }
-        if (aggro || (shooter != null && shooter.IsSeeingPlayer))
-        {
-            Vector3 rotTarget = target.position - transform.position;
-            Vector3 rotFlat = new Vector3(rotTarget.x, 0f, rotTarget.z);
-            if (rotFlat.sqrMagnitude > 0.001f)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(rotFlat);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
-            }
+            StopAgent();
+            return;
         }
 
         if (!aggro)
         {
-            if (!agent.isStopped)
-            {
-                agent.isStopped = true;
-                agent.ResetPath();
-            }
+            StopAgent();
             return;
         }
 
-        if (!agent.isOnNavMesh) return;
+        if (shooter != null && shooter.IsSeeingPlayer)
+        {
+            StopAgent();
+            return;
+        }
+
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh)
+            return;
 
         agent.speed = moveSpeed;
+        agent.stoppingDistance = stopDistance;
+        agent.updateRotation = false;
+
+        Vector3 flatToTarget = target.position - transform.position;
+        flatToTarget.y = 0f;
+
+        float stopDistanceSqr = stopDistance * stopDistance;
+        if (flatToTarget.sqrMagnitude <= stopDistanceSqr)
+        {
+            StopAgent();
+            FaceDirection(flatToTarget);
+            return;
+        }
 
         repathTimer -= Time.deltaTime;
         if (repathTimer <= 0f)
         {
             agent.SetDestination(target.position);
-            agent.isStopped = false;
             repathTimer = repathInterval;
         }
 
-        if (!agent.pathPending && agent.hasPath)
-        {
-            if (agent.remainingDistance <= stopDistance)
-            {
-                if (!agent.isStopped) agent.isStopped = true;
-            }
-        }
+        if (agent.isStopped)
+            agent.isStopped = false;
 
+        Vector3 moveDir = agent.desiredVelocity;
+        moveDir.y = 0f;
+        FaceDirection(moveDir);
     }
+
+    void ResolveTarget()
+    {
+        if (target != null)
+            return;
+
+        if (shooter != null && shooter.TargetPlayer != null)
+            target = shooter.TargetPlayer.transform;
+    }
+
+    void FaceDirection(Vector3 flatDirection)
+    {
+        if (flatDirection.sqrMagnitude <= 0.001f)
+            return;
+
+        Quaternion targetRotation = Quaternion.LookRotation(flatDirection.normalized);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
+    }
+
+    void StopAgent()
+    {
+        if (agent == null)
+            return;
+
+        if (!agent.enabled)
+            return;
+
+        if (!agent.isStopped)
+            agent.isStopped = true;
+
+        agent.ResetPath();
+    }
+
+    public void SetAggro(bool value)
+    {
+        aggro = value;
+
+        if (!aggro)
+            StopAgent();
+    }
+
+    public void ResetForSpawn()
+    {
+        aggro = autoAggroOnStart;
+        repathTimer = 0f;
+        StopAgent();
+    }
+
     public void ResetAggro()
     {
         aggro = false;
-        warnedNoTarget = false;
-
-        if (agent != null)
-        {
-            agent.isStopped = true;
-            agent.ResetPath();
-        }
+        repathTimer = 0f;
+        StopAgent();
     }
 }

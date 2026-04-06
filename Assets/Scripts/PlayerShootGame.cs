@@ -10,6 +10,7 @@ public class PlayerShootGame : MonoBehaviour
     [SerializeField] private int magazineSize = 30;
     [SerializeField] private float reloadDuration = 0.8f;
     [SerializeField] private GameSessionManger sessionManager;
+    [SerializeField] private LayerMask shotMask = ~0;
 
     [Header("Burst Fire")]
     [SerializeField] private bool burstFire = true;
@@ -40,6 +41,7 @@ public class PlayerShootGame : MonoBehaviour
     private bool isReloading;
     private bool burstInProgress;
     private int currentBurstShotIndex;
+    private Coroutine tracerRoutine;
 
     void Start()
     {
@@ -84,9 +86,13 @@ public class PlayerShootGame : MonoBehaviour
         burstInProgress = false;
         bulletsInMag = magazineSize;
         currentBurstShotIndex = 0;
+        tracerRoutine = null;
 
         if (tracerLine != null)
             tracerLine.enabled = false;
+
+        if (gunRecoil != null)
+            gunRecoil.ResetInstant();
 
         if (sessionManager != null)
             sessionManager.UpdateAmmoDisplay(bulletsInMag, magazineSize, false);
@@ -206,13 +212,23 @@ public class PlayerShootGame : MonoBehaviour
             return;
 
         Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-        bool hitSomething = Physics.Raycast(ray, out RaycastHit hit, range);
+        bool hitSomething = Physics.Raycast(ray, out RaycastHit hit, range, shotMask, QueryTriggerInteraction.Ignore);
 
         Vector3 tracerStart = muzzleTransform != null ? muzzleTransform.position : ray.origin;
         Vector3 tracerEnd = hitSomething ? hit.point : ray.origin + ray.direction * range;
 
         if (tracerLine != null)
-            StartCoroutine(ShowTracer(tracerStart, tracerEnd));
+        {
+            if (tracerRoutine != null)
+                StopCoroutine(tracerRoutine);
+            tracerRoutine = StartCoroutine(ShowTracer(tracerStart, tracerEnd));
+        }
+
+        EnemyHitbox hb = hitSomething ? hit.collider.GetComponent<EnemyHitbox>() : null;
+        Enemy shotEnemy = hb != null ? hb.Owner : null;
+
+        if (sessionManager != null && (burstFire || burstInProgress))
+            sessionManager.RegisterBurstShotPoint(shotEnemy, tracerEnd);
 
         if (!hitSomething)
             return;
@@ -224,7 +240,6 @@ public class PlayerShootGame : MonoBehaviour
             Destroy(impact, hitImpactLifetime);
         }
 
-        EnemyHitbox hb = hit.collider.GetComponent<EnemyHitbox>();
         if (hb == null || hb.Owner == null)
             return;
 
@@ -232,12 +247,7 @@ public class PlayerShootGame : MonoBehaviour
         Vector3 aimCenter = hb.Owner.RecoilCenter != null ? hb.Owner.RecoilCenter.position : hit.collider.bounds.center;
 
         if (sessionManager != null)
-        {
             sessionManager.RegisterEnemyHitDetailed(hb.Owner, isHead, hit.point, aimCenter);
-
-            if (burstFire || burstInProgress)
-                sessionManager.RegisterBurstHitPoint(hb.Owner, hit.point, aimCenter);
-        }
 
         hb.Owner.TakeHit(hb.HitArea);
     }
@@ -285,5 +295,6 @@ public class PlayerShootGame : MonoBehaviour
         yield return new WaitForSeconds(tracerDuration);
 
         tracerLine.enabled = false;
+        tracerRoutine = null;
     }
 }

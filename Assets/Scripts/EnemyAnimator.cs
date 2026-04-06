@@ -28,6 +28,9 @@ public class EnemyAnimator : MonoBehaviour
 
         if (enemy == null)
             enemy = GetComponent<Enemy>();
+
+        if (animator != null)
+            animator.applyRootMotion = false;
     }
 
     void Update()

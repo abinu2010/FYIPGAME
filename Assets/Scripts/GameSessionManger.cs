@@ -17,6 +17,7 @@ public class GameSessionManger : MonoBehaviour
     [SerializeField] private PlayerMovement playerMovement;
     [SerializeField] private PlayerLook playerLook;
     [SerializeField] private PlayerHealth playerHealth;
+    [SerializeField] private PlayerAnimator playerAnimator;
     [SerializeField] private Transform playerRoot;
     [SerializeField] private Transform playerSpawnPoint;
 
@@ -180,8 +181,8 @@ public class GameSessionManger : MonoBehaviour
         if (panelSummary != null)
             panelSummary.SetActive(true);
 
-        float accuracyPercent = shotsFired > 0 ? (hits / (float)shotsFired) * 100f : 0f;
-        float headshotPercent = hits > 0 ? (headshots / (float)hits) * 100f : 0f;
+        float accuracyPercent = shotsFired > 0 ? hits / (float)shotsFired * 100f : 0f;
+        float headshotPercent = hits > 0 ? headshots / (float)hits * 100f : 0f;
 
         float avgFirstHitLatency = countFirstHitLatency > 0 ? sumFirstHitLatency / countFirstHitLatency : 0f;
         float avgTtkFromFirstHit = countTtkFromFirstHit > 0 ? sumTtkFromFirstHit / countTtkFromFirstHit : 0f;
@@ -190,9 +191,9 @@ public class GameSessionManger : MonoBehaviour
         float avgSwitchTime = switchTimeCount > 0 ? switchTimeSum / switchTimeCount : 0f;
 
         float elapsed = Mathf.Max(0.01f, Time.time - roundStartTime);
-        float hitsPerMinute = hits > 0 ? (hits / elapsed) * 60f : 0f;
+        float hitsPerMinute = hits > 0 ? hits / elapsed * 60f : 0f;
 
-        float shotsPerKill = kills > 0 ? (shotsFired / (float)kills) : 0f;
+        float shotsPerKill = kills > 0 ? shotsFired / (float)kills : 0f;
         float avgReloadTime = reloadCount > 0 ? reloadTimeSum / reloadCount : 0f;
 
         string diedText = playerDied ? "Player died" : "Time up";
@@ -242,7 +243,7 @@ public class GameSessionManger : MonoBehaviour
         burstHitSamples.Clear();
     }
 
-    public void RegisterBurstHitPoint(Enemy enemy, Vector3 hitPoint, Vector3 aimCenter)
+    public void RegisterBurstShotPoint(Enemy enemy, Vector3 shotPoint)
     {
         if (!roundActive)
             return;
@@ -250,16 +251,25 @@ public class GameSessionManger : MonoBehaviour
         if (!burstActive)
             return;
 
-        if (enemy == null)
-            return;
+        if (enemy != null)
+        {
+            if (burstEnemy == null)
+                burstEnemy = enemy;
+            else if (burstEnemy != enemy)
+                return;
+        }
+        else
+        {
+            if (burstEnemy == null)
+                return;
 
-        if (burstEnemy == null)
-            burstEnemy = enemy;
-        else if (burstEnemy != enemy)
-            return;
+            enemy = burstEnemy;
+        }
+
+        Vector3 aimCenter = enemy != null && enemy.RecoilCenter != null ? enemy.RecoilCenter.position : shotPoint;
 
         BurstHitSample sample = new BurstHitSample();
-        sample.hitPoint = hitPoint;
+        sample.hitPoint = shotPoint;
         sample.aimCenter = aimCenter;
 
         burstHitSamples.Add(sample);
@@ -463,8 +473,8 @@ public class GameSessionManger : MonoBehaviour
         if (accuracyText == null)
             return;
 
-        float accuracyPercent = shotsFired > 0 ? (hits / (float)shotsFired) * 100f : 0f;
-        float headshotPercent = hits > 0 ? (headshots / (float)hits) * 100f : 0f;
+        float accuracyPercent = shotsFired > 0 ? hits / (float)shotsFired * 100f : 0f;
+        float headshotPercent = hits > 0 ? headshots / (float)hits * 100f : 0f;
 
         accuracyText.text =
             "Acc: " + accuracyPercent.ToString("F1") + "%  Hits: " + hits + "/" + shotsFired +
@@ -563,6 +573,9 @@ public class GameSessionManger : MonoBehaviour
                 playerRoot = playerLook.transform.root;
         }
 
+        if (playerAnimator == null && playerRoot != null)
+            playerAnimator = playerRoot.GetComponentInChildren<PlayerAnimator>(true);
+
         if (!cachedPlayerStartValid && playerRoot != null)
         {
             cachedPlayerStartPosition = playerRoot.position;
@@ -589,6 +602,9 @@ public class GameSessionManger : MonoBehaviour
 
         if (playerShoot != null)
             playerShoot.ResetForNewRound();
+
+        if (playerAnimator != null)
+            playerAnimator.ResetAnimatorState();
 
         if (playerRoot != null)
         {
@@ -646,6 +662,9 @@ public class GameSessionManger : MonoBehaviour
 
         if (playerLook != null)
             playerLook.enabled = value;
+
+        if (playerAnimator != null)
+            playerAnimator.enabled = value;
     }
 
     private void LockIdentity()

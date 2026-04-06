@@ -258,6 +258,7 @@ MonoBehaviour:
   playerMovement: {fileID: 500210662}
   playerLook: {fileID: 8963184469491210422}
   playerHealth: {fileID: 500210659}
+  playerAnimator: {fileID: 0}
   playerRoot: {fileID: 500210660}
   playerSpawnPoint: {fileID: 844011775}
   timerText: {fileID: 555109338756914478}

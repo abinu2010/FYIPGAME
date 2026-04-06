@@ -14,13 +14,21 @@ public sealed class PlayerAnimator : MonoBehaviour
 
     private float currentSpeed;
 
-    private void Awake()
+    void Awake()
     {
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
+
+        if (animator != null)
+            animator.applyRootMotion = false;
     }
 
-    private void Update()
+    void OnEnable()
+    {
+        ResetAnimatorState();
+    }
+
+    void Update()
     {
         if (animator == null)
             return;
@@ -41,5 +49,18 @@ public sealed class PlayerAnimator : MonoBehaviour
 
         if (Input.GetButtonDown("Fire1"))
             animator.SetTrigger(shootTrigger);
+    }
+
+    public void ResetAnimatorState()
+    {
+        currentSpeed = 0f;
+
+        if (animator == null)
+            return;
+
+        animator.Rebind();
+        animator.Update(0f);
+        animator.SetFloat(speedParam, 0f);
+        animator.ResetTrigger(shootTrigger);
     }
 }
