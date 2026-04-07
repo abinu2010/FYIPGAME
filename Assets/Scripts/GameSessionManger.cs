@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class GameSessionManger : MonoBehaviour
 {
@@ -34,6 +35,22 @@ public class GameSessionManger : MonoBehaviour
     [SerializeField] private GameObject quitButton;
     [SerializeField] private TMP_InputField playerIdInput;
 
+    [Header("Start Sensitivity UI")]
+    [SerializeField] private Slider startSensitivitySlider;
+    [SerializeField] private TMP_Text startSensitivityValueText;
+
+    [Header("Pause Menu")]
+    [SerializeField] private GameObject pausePanel;
+    [SerializeField] private Button pauseResumeButton;
+    [SerializeField] private Button pauseQuitButton;
+    [SerializeField] private Slider pauseSensitivitySlider;
+    [SerializeField] private TMP_Text pauseSensitivityValueText;
+
+    [Header("Sensitivity")]
+    [SerializeField] private float sensitivityMin = 0.1f;
+    [SerializeField] private float sensitivityMax = 10f;
+    [SerializeField] private float defaultSensitivity = 2f;
+
     [Header("Logging")]
     [SerializeField] private bool writeCsv = true;
     [SerializeField] private string killLogFileName = "game_kill_log.csv";
@@ -63,6 +80,8 @@ public class GameSessionManger : MonoBehaviour
 
     private bool burstActive;
     private Enemy burstEnemy;
+
+    private bool paused;
 
     private struct BurstHitSample
     {
@@ -102,19 +121,33 @@ public class GameSessionManger : MonoBehaviour
     private string killLogPath;
     private string roundSummaryPath;
 
-    public bool IsRoundActive => roundActive;
+    public bool IsRoundActive => roundActive && !paused;
 
-    void Start()
+    private void Start()
     {
         CacheSceneReferences();
         ResetRoundState();
         ResetWorldToRoundStart();
         PrepareCsvFiles();
+        SetupSensitivityUi();
+        ApplyLoadedSensitivity();
+        SetupPauseButtons();
     }
 
-    void Update()
+    private void Update()
     {
+        if (roundActive && Input.GetKeyDown(KeyCode.Escape))
+        {
+            if (paused)
+                ResumePausedGame();
+            else
+                PauseGame();
+        }
+
         if (!roundActive)
+            return;
+
+        if (paused)
             return;
 
         timeRemaining -= Time.deltaTime;
@@ -141,6 +174,7 @@ public class GameSessionManger : MonoBehaviour
 
         roundIndex++;
         roundActive = true;
+        paused = false;
         timeRemaining = roundDurationSeconds;
         roundStartTime = Time.time;
 
@@ -163,8 +197,13 @@ public class GameSessionManger : MonoBehaviour
         if (panelSummary != null)
             panelSummary.SetActive(false);
 
+        if (pausePanel != null)
+            pausePanel.SetActive(false);
+
         if (summaryText != null)
             summaryText.text = "";
+
+        Time.timeScale = 1f;
 
         UpdateTimerUI();
         UpdateAccuracyUI();
@@ -181,10 +220,16 @@ public class GameSessionManger : MonoBehaviour
             EndBurstInternal();
 
         roundActive = false;
+        paused = false;
+        Time.timeScale = 1f;
+
         SetPlayerControlEnabled(false);
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+
+        if (pausePanel != null)
+            pausePanel.SetActive(false);
 
         if (panelSummary != null)
             panelSummary.SetActive(true);
@@ -249,17 +294,24 @@ public class GameSessionManger : MonoBehaviour
             EndBurstInternal();
 
         roundActive = false;
+        paused = false;
+        Time.timeScale = 1f;
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
+        if (pausePanel != null)
+            pausePanel.SetActive(false);
+
         CacheSceneReferences();
         ResetRoundState();
         ResetWorldToRoundStart();
+        ApplyLoadedSensitivity();
     }
 
     public void QuitGame()
     {
+        Time.timeScale = 1f;
         Application.Quit();
 
 #if UNITY_EDITOR
@@ -272,9 +324,123 @@ public class GameSessionManger : MonoBehaviour
         EndRound(true);
     }
 
-    public void BeginBurst()
+    public void PauseGame()
     {
         if (!roundActive)
+            return;
+
+        if (paused)
+            return;
+
+        paused = true;
+        Time.timeScale = 0f;
+        SetPlayerControlEnabled(false);
+
+        if (pausePanel != null)
+            pausePanel.SetActive(true);
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
+    public void ResumePausedGame()
+    {
+        if (!roundActive)
+            return;
+
+        if (!paused)
+            return;
+
+        paused = false;
+        Time.timeScale = 1f;
+        SetPlayerControlEnabled(true);
+
+        if (pausePanel != null)
+            pausePanel.SetActive(false);
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    public void OnStartSensitivityChanged(float value)
+    {
+        if (pauseSensitivitySlider != null)
+            pauseSensitivitySlider.SetValueWithoutNotify(value);
+
+        ApplySensitivity(value);
+    }
+
+    public void OnPauseSensitivityChanged(float value)
+    {
+        if (startSensitivitySlider != null)
+            startSensitivitySlider.SetValueWithoutNotify(value);
+
+        ApplySensitivity(value);
+    }
+
+    private void SetupSensitivityUi()
+    {
+        float saved = PlayerPrefs.GetFloat("MouseSensitivity", defaultSensitivity);
+
+        SetupSlider(startSensitivitySlider, saved);
+        SetupSlider(pauseSensitivitySlider, saved);
+
+        UpdateSensitivityTexts(saved);
+    }
+
+    private void SetupSlider(Slider slider, float value)
+    {
+        if (slider == null)
+            return;
+
+        slider.minValue = sensitivityMin;
+        slider.maxValue = sensitivityMax;
+        slider.wholeNumbers = false;
+        slider.SetValueWithoutNotify(value);
+    }
+
+    private void ApplyLoadedSensitivity()
+    {
+        float saved = PlayerPrefs.GetFloat("MouseSensitivity", defaultSensitivity);
+        ApplySensitivity(saved);
+    }
+
+    private void ApplySensitivity(float value)
+    {
+        float clamped = Mathf.Clamp(value, sensitivityMin, sensitivityMax);
+
+        if (playerLook == null)
+            CacheSceneReferences();
+
+        if (playerLook != null)
+            playerLook.SetSensitivity(clamped);
+
+        UpdateSensitivityTexts(clamped);
+    }
+
+    private void UpdateSensitivityTexts(float value)
+    {
+        string t = value.ToString("0.00");
+
+        if (startSensitivityValueText != null)
+            startSensitivityValueText.text = t;
+
+        if (pauseSensitivityValueText != null)
+            pauseSensitivityValueText.text = t;
+    }
+
+    private void SetupPauseButtons()
+    {
+        if (pauseResumeButton != null)
+            pauseResumeButton.onClick.AddListener(ResumePausedGame);
+
+        if (pauseQuitButton != null)
+            pauseQuitButton.onClick.AddListener(QuitGame);
+    }
+
+    public void BeginBurst()
+    {
+        if (!roundActive || paused)
             return;
 
         burstActive = true;
@@ -284,7 +450,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void RegisterBurstShotPoint(Enemy enemy, Vector3 shotPoint)
     {
-        if (!roundActive)
+        if (!roundActive || paused)
             return;
 
         if (!burstActive)
@@ -322,7 +488,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void EndBurst()
     {
-        if (!roundActive)
+        if (!roundActive || paused)
             return;
 
         if (!burstActive)
@@ -355,7 +521,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void RegisterReloadStarted()
     {
-        if (!roundActive)
+        if (!roundActive || paused)
             return;
 
         if (reloadActive)
@@ -368,7 +534,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void RegisterReloadFinished()
     {
-        if (!roundActive)
+        if (!roundActive || paused)
             return;
 
         if (!reloadActive)
@@ -381,7 +547,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void RegisterShot()
     {
-        if (!roundActive)
+        if (!roundActive || paused)
             return;
 
         shotsFired++;
@@ -390,7 +556,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void RegisterEnemyHitDetailed(Enemy enemy, bool headshotHit, Vector3 hitPoint, Vector3 aimCenter)
     {
-        if (!roundActive || enemy == null)
+        if (!roundActive || paused || enemy == null)
             return;
 
         hits++;
@@ -440,7 +606,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void NotifyEnemySpawned(Enemy enemy)
     {
-        if (!roundActive || enemy == null)
+        if (!roundActive || paused || enemy == null)
             return;
 
         if (!engagements.TryGetValue(enemy, out Engagement e))
@@ -457,7 +623,7 @@ public class GameSessionManger : MonoBehaviour
 
     public void RegisterEnemyKill(Enemy enemy, bool headshotKill)
     {
-        if (!roundActive || enemy == null)
+        if (!roundActive || paused || enemy == null)
             return;
 
         kills++;
@@ -540,6 +706,7 @@ public class GameSessionManger : MonoBehaviour
     private void ResetRoundState()
     {
         roundActive = false;
+        paused = false;
         timeRemaining = roundDurationSeconds;
         roundStartTime = 0f;
         roundIndex = 0;
@@ -553,6 +720,8 @@ public class GameSessionManger : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
+        Time.timeScale = 0f;
+
         if (startButton != null)
             startButton.SetActive(true);
 
@@ -564,6 +733,9 @@ public class GameSessionManger : MonoBehaviour
 
         if (panelSummary != null)
             panelSummary.SetActive(true);
+
+        if (pausePanel != null)
+            pausePanel.SetActive(false);
 
         if (summaryText != null)
             summaryText.text = "Enter your name and Press Start";
@@ -630,15 +802,6 @@ public class GameSessionManger : MonoBehaviour
 
         if (playerAnimator == null && playerRoot != null)
             playerAnimator = playerRoot.GetComponentInChildren<PlayerAnimator>(true);
-
-        if (!cachedPlayerStartValid && playerRoot != null)
-        {
-            cachedPlayerStartPosition = playerRoot.position;
-            cachedPlayerStartRotation = playerRoot.rotation;
-            cachedPlayerStartValid = true;
-        }
-
-        cachedEnemies = Object.FindObjectsByType<Enemy>(FindObjectsSortMode.None);
     }
 
     private void ResetWorldToRoundStart()
@@ -663,8 +826,18 @@ public class GameSessionManger : MonoBehaviour
 
         if (playerRoot != null)
         {
-            Vector3 targetPosition = cachedPlayerStartValid ? cachedPlayerStartPosition : playerRoot.position;
-            Quaternion targetRotation = cachedPlayerStartValid ? cachedPlayerStartRotation : playerRoot.rotation;
+            Vector3 targetPosition = playerRoot.position;
+            Quaternion targetRotation = playerRoot.rotation;
+
+            if (!cachedPlayerStartValid)
+            {
+                cachedPlayerStartPosition = playerRoot.position;
+                cachedPlayerStartRotation = playerRoot.rotation;
+                cachedPlayerStartValid = true;
+            }
+
+            targetPosition = cachedPlayerStartPosition;
+            targetRotation = cachedPlayerStartRotation;
 
             if (playerSpawnPoint != null)
             {
@@ -691,8 +864,7 @@ public class GameSessionManger : MonoBehaviour
 
     private void ResetEnemiesForRoundStart()
     {
-        if (cachedEnemies == null || cachedEnemies.Length == 0)
-            CacheSceneReferences();
+        cachedEnemies = Object.FindObjectsByType<Enemy>(FindObjectsSortMode.None);
 
         if (cachedEnemies == null)
             return;
