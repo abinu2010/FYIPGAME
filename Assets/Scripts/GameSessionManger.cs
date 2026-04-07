@@ -30,6 +30,8 @@ public class GameSessionManger : MonoBehaviour
     [SerializeField] private TMP_Text summaryText;
     [SerializeField] private GameObject panelSummary;
     [SerializeField] private GameObject startButton;
+    [SerializeField] private GameObject restartSessionButton;
+    [SerializeField] private GameObject quitButton;
     [SerializeField] private TMP_InputField playerIdInput;
 
     [Header("Logging")]
@@ -152,6 +154,12 @@ public class GameSessionManger : MonoBehaviour
         if (startButton != null)
             startButton.SetActive(false);
 
+        if (restartSessionButton != null)
+            restartSessionButton.SetActive(false);
+
+        if (quitButton != null)
+            quitButton.SetActive(false);
+
         if (panelSummary != null)
             panelSummary.SetActive(false);
 
@@ -216,8 +224,15 @@ public class GameSessionManger : MonoBehaviour
         ResetWorldToRoundStart();
 
         bool hasMoreRounds = roundIndex < maxRounds;
+
         if (startButton != null)
             startButton.SetActive(hasMoreRounds);
+
+        if (restartSessionButton != null)
+            restartSessionButton.SetActive(!hasMoreRounds);
+
+        if (quitButton != null)
+            quitButton.SetActive(true);
 
         if (!hasMoreRounds && summaryText != null)
             summaryText.text += "\n\nSession finished";
@@ -226,6 +241,30 @@ public class GameSessionManger : MonoBehaviour
         UpdateAccuracyUI();
         UpdateKillsUI();
         UpdateHealthUI();
+    }
+
+    public void RestartSession()
+    {
+        if (burstActive)
+            EndBurstInternal();
+
+        roundActive = false;
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        CacheSceneReferences();
+        ResetRoundState();
+        ResetWorldToRoundStart();
+    }
+
+    public void QuitGame()
+    {
+        Application.Quit();
+
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#endif
     }
 
     public void OnPlayerDied()
@@ -251,6 +290,9 @@ public class GameSessionManger : MonoBehaviour
         if (!burstActive)
             return;
 
+        if (enemy != null && !enemy.IsAlive)
+            return;
+
         if (enemy != null)
         {
             if (burstEnemy == null)
@@ -261,6 +303,9 @@ public class GameSessionManger : MonoBehaviour
         else
         {
             if (burstEnemy == null)
+                return;
+
+            if (!burstEnemy.IsAlive)
                 return;
 
             enemy = burstEnemy;
@@ -447,6 +492,9 @@ public class GameSessionManger : MonoBehaviour
 
         WriteKillLogCsv(enemy, e, firstHitLatency, ttkFromFirstHit, headshotKill);
 
+        if (burstActive && burstEnemy == enemy)
+            EndBurstInternal();
+
         lastKillTime = killTime;
         awaitingSwitch = true;
     }
@@ -508,6 +556,12 @@ public class GameSessionManger : MonoBehaviour
         if (startButton != null)
             startButton.SetActive(true);
 
+        if (restartSessionButton != null)
+            restartSessionButton.SetActive(false);
+
+        if (quitButton != null)
+            quitButton.SetActive(true);
+
         if (panelSummary != null)
             panelSummary.SetActive(true);
 
@@ -516,6 +570,7 @@ public class GameSessionManger : MonoBehaviour
 
         if (playerIdInput != null)
         {
+            playerIdInput.text = "";
             playerIdInput.interactable = true;
             playerIdInput.readOnly = false;
             playerIdInput.gameObject.SetActive(true);

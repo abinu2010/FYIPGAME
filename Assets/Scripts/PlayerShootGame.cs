@@ -17,6 +17,7 @@ public class PlayerShootGame : MonoBehaviour
     [SerializeField] private int burstSize = 3;
     [SerializeField] private float burstShotsPerSecond = 12f;
     [SerializeField] private float burstsPerSecond = 2.5f;
+    [SerializeField] private bool stopBurstWhenEnemyDies = true;
 
     [Header("Gun Recoil Object")]
     [SerializeField] private GunRecoil gunRecoil;
@@ -132,7 +133,10 @@ public class PlayerShootGame : MonoBehaviour
             if (bulletsInMag <= 0)
                 break;
 
-            FireOneShot();
+            bool stopBurstNow = FireOneShot();
+
+            if (stopBurstNow)
+                break;
 
             if (i < shotsToFire - 1)
                 yield return new WaitForSeconds(shotInterval);
@@ -167,7 +171,7 @@ public class PlayerShootGame : MonoBehaviour
             StartReload();
     }
 
-    void FireOneShot()
+    bool FireOneShot()
     {
         bulletsInMag--;
 
@@ -177,7 +181,7 @@ public class PlayerShootGame : MonoBehaviour
             sessionManager.UpdateAmmoDisplay(bulletsInMag, magazineSize, bulletsInMag <= 0);
         }
 
-        FireRay();
+        bool killedEnemyThisShot = FireRay();
 
         if (gunRecoil != null)
             gunRecoil.ApplyRecoil();
@@ -190,6 +194,8 @@ public class PlayerShootGame : MonoBehaviour
         }
 
         currentBurstShotIndex++;
+
+        return stopBurstWhenEnemyDies && killedEnemyThisShot;
     }
 
     float GetPitchForCurrentShot()
@@ -206,10 +212,10 @@ public class PlayerShootGame : MonoBehaviour
         return recoilPitchShot3;
     }
 
-    void FireRay()
+    bool FireRay()
     {
         if (cam == null)
-            return;
+            return false;
 
         Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
         bool hitSomething = Physics.Raycast(ray, out RaycastHit hit, range, shotMask, QueryTriggerInteraction.Ignore);
@@ -227,11 +233,11 @@ public class PlayerShootGame : MonoBehaviour
         EnemyHitbox hb = hitSomething ? hit.collider.GetComponent<EnemyHitbox>() : null;
         Enemy shotEnemy = hb != null ? hb.Owner : null;
 
-        if (sessionManager != null && (burstFire || burstInProgress))
+        if (sessionManager != null && burstInProgress)
             sessionManager.RegisterBurstShotPoint(shotEnemy, tracerEnd);
 
         if (!hitSomething)
-            return;
+            return false;
 
         if (hitImpactPrefab != null)
         {
@@ -241,7 +247,7 @@ public class PlayerShootGame : MonoBehaviour
         }
 
         if (hb == null || hb.Owner == null)
-            return;
+            return false;
 
         bool isHead = hb.HitArea == Enemy.HitArea.Head;
         Vector3 aimCenter = hb.Owner.RecoilCenter != null ? hb.Owner.RecoilCenter.position : hit.collider.bounds.center;
@@ -250,6 +256,8 @@ public class PlayerShootGame : MonoBehaviour
             sessionManager.RegisterEnemyHitDetailed(hb.Owner, isHead, hit.point, aimCenter);
 
         hb.Owner.TakeHit(hb.HitArea);
+
+        return !hb.Owner.IsAlive;
     }
 
     void StartReload()
